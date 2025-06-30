@@ -1,13 +1,13 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
-const TodoDatabase = require('./database');
+const TodoDatabaseMemory = require('./database-memory');
 
-const db = new TodoDatabase();
+const db = new TodoDatabaseMemory();
 
 // Slash Commandsの定義
 const commands = [
     new SlashCommandBuilder()
         .setName('todo')
-        .setDescription('Todoリストを管理します')
+        .setDescription('Todoリストを管理します（軽量版）')
         .addSubcommand(subcommand =>
             subcommand
                 .setName('add')
@@ -47,7 +47,11 @@ const commands = [
                 .addIntegerOption(option =>
                     option.setName('id')
                         .setDescription('切り替えるTodoのID')
-                        .setRequired(true))),
+                        .setRequired(true)))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('stats')
+                .setDescription('統計情報を表示します')),
 ];
 
 // コマンドハンドラー
@@ -73,6 +77,9 @@ async function handleCommand(interaction) {
             case 'toggle':
                 await handleToggle(interaction, userId);
                 break;
+            case 'stats':
+                await handleStats(interaction);
+                break;
         }
     } catch (error) {
         console.error('コマンド実行エラー:', error);
@@ -96,7 +103,8 @@ async function handleAdd(interaction, userId, guildId) {
         .setDescription(`**${title}** を追加しました！`)
         .addFields(
             { name: 'ID', value: todoId.toString(), inline: true },
-            { name: '説明', value: description || 'なし', inline: true }
+            { name: '説明', value: description || 'なし', inline: true },
+            { name: '⚠️ 注意', value: 'Bot再起動時にデータがリセットされます', inline: false }
         )
         .setTimestamp();
 
@@ -110,8 +118,11 @@ async function handleList(interaction, userId, guildId) {
     if (todos.length === 0) {
         const embed = new EmbedBuilder()
             .setColor('#ff9900')
-            .setTitle('📝 Todoリスト')
+            .setTitle('📝 Todoリスト（軽量版）')
             .setDescription('まだTodoがありません。`/todo add` で新しいTodoを追加してください！')
+            .addFields(
+                { name: '⚠️ 注意', value: 'Bot再起動時にデータがリセットされます', inline: false }
+            )
             .setTimestamp();
 
         await interaction.reply({ embeds: [embed] });
@@ -120,8 +131,11 @@ async function handleList(interaction, userId, guildId) {
 
     const embed = new EmbedBuilder()
         .setColor('#0099ff')
-        .setTitle('📝 Todoリスト')
+        .setTitle('📝 Todoリスト（軽量版）')
         .setDescription(`${interaction.user.username} のTodo一覧`)
+        .addFields(
+            { name: '⚠️ 注意', value: 'Bot再起動時にデータがリセットされます', inline: false }
+        )
         .setTimestamp();
 
     const completedTodos = todos.filter(todo => todo.completed);
@@ -155,6 +169,25 @@ async function handleList(interaction, userId, guildId) {
         );
 
     await interaction.reply({ embeds: [embed], components: [row] });
+}
+
+// 統計情報表示
+async function handleStats(interaction) {
+    const stats = db.getStats();
+    
+    const embed = new EmbedBuilder()
+        .setColor('#ff6b6b')
+        .setTitle('📊 統計情報')
+        .addFields(
+            { name: '👥 ユーザー数', value: stats.totalUsers.toString(), inline: true },
+            { name: '📝 総Todo数', value: stats.totalTodos.toString(), inline: true },
+            { name: '✅ 完了済み', value: stats.completedTodos.toString(), inline: true },
+            { name: '⏳ 未完了', value: stats.pendingTodos.toString(), inline: true },
+            { name: '⚠️ 注意', value: 'Bot再起動時にデータがリセットされます', inline: false }
+        )
+        .setTimestamp();
+
+    await interaction.reply({ embeds: [embed] });
 }
 
 // Todo削除
@@ -313,7 +346,8 @@ async function handleModal(interaction) {
                 .setDescription(`**${title}** を追加しました！`)
                 .addFields(
                     { name: 'ID', value: todoId.toString(), inline: true },
-                    { name: '説明', value: description || 'なし', inline: true }
+                    { name: '説明', value: description || 'なし', inline: true },
+                    { name: '⚠️ 注意', value: 'Bot再起動時にデータがリセットされます', inline: false }
                 )
                 .setTimestamp();
 

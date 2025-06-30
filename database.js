@@ -1,132 +1,112 @@
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
-
-class TodoDatabase {
+// メモリベースの軽量データベース
+class TodoDatabaseMemory {
     constructor() {
-        this.db = new sqlite3.Database(path.join(__dirname, 'todos.db'));
-        this.init();
-    }
-
-    init() {
-        this.db.run(`
-            CREATE TABLE IF NOT EXISTS todos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                guild_id TEXT NOT NULL,
-                title TEXT NOT NULL,
-                description TEXT,
-                completed BOOLEAN DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                completed_at DATETIME
-            )
-        `);
+        this.todos = new Map(); // user_id -> todos[]
+        this.nextId = 1;
     }
 
     // Todoを追加
     addTodo(userId, guildId, title, description = '') {
-        return new Promise((resolve, reject) => {
-            this.db.run(
-                'INSERT INTO todos (user_id, guild_id, title, description) VALUES (?, ?, ?, ?)',
-                [userId, guildId, title, description],
-                function(err) {
-                    if (err) reject(err);
-                    else resolve(this.lastID);
-                }
-            );
-        });
+        const todo = {
+            id: this.nextId++,
+            user_id: userId,
+            guild_id: guildId,
+            title: title,
+            description: description,
+            completed: false,
+            created_at: new Date(),
+            completed_at: null
+        };
+
+        if (!this.todos.has(userId)) {
+            this.todos.set(userId, []);
+        }
+        this.todos.get(userId).push(todo);
+        
+        return todo.id;
     }
 
     // Todoを取得
     getTodo(id) {
-        return new Promise((resolve, reject) => {
-            this.db.get(
-                'SELECT * FROM todos WHERE id = ?',
-                [id],
-                (err, row) => {
-                    if (err) reject(err);
-                    else resolve(row);
-                }
-            );
-        });
+        for (const [userId, userTodos] of this.todos) {
+            const todo = userTodos.find(t => t.id === id);
+            if (todo) return todo;
+        }
+        return null;
     }
 
     // ユーザーのTodo一覧を取得
     getTodos(userId, guildId) {
-        return new Promise((resolve, reject) => {
-            this.db.all(
-                'SELECT * FROM todos WHERE user_id = ? AND guild_id = ? ORDER BY created_at DESC',
-                [userId, guildId],
-                (err, rows) => {
-                    if (err) reject(err);
-                    else resolve(rows);
-                }
-            );
-        });
+        const userTodos = this.todos.get(userId) || [];
+        return userTodos
+            .filter(todo => todo.guild_id === guildId)
+            .sort((a, b) => b.created_at - a.created_at);
     }
 
     // Todoを完了/未完了に変更
     toggleTodo(id, userId) {
-        return new Promise((resolve, reject) => {
-            this.db.get(
-                'SELECT completed FROM todos WHERE id = ? AND user_id = ?',
-                [id, userId],
-                (err, row) => {
-                    if (err) {
-                        reject(err);
-                        return;
-                    }
-                    if (!row) {
-                        reject(new Error('Todo not found'));
-                        return;
-                    }
+        const userTodos = this.todos.get(userId);
+        if (!userTodos) return false;
 
-                    const newStatus = !row.completed;
-                    const completedAt = newStatus ? new Date().toISOString() : null;
+        const todo = userTodos.find(t => t.id === id);
+        if (!todo) return false;
 
-                    this.db.run(
-                        'UPDATE todos SET completed = ?, completed_at = ? WHERE id = ? AND user_id = ?',
-                        [newStatus ? 1 : 0, completedAt, id, userId],
-                        function(err) {
-                            if (err) reject(err);
-                            else resolve(newStatus);
-                        }
-                    );
-                }
-            );
-        });
+        todo.completed = !todo.completed;
+        todo.completed_at = todo.completed ? new Date() : null;
+        
+        return todo.completed;
     }
 
     // Todoを削除
     deleteTodo(id, userId) {
-        return new Promise((resolve, reject) => {
-            this.db.run(
-                'DELETE FROM todos WHERE id = ? AND user_id = ?',
-                [id, userId],
-                function(err) {
-                    if (err) reject(err);
-                    else resolve(this.changes > 0);
-                }
-            );
-        });
+        const userTodos = this.todos.get(userId);
+        if (!userTodos) return false;
+
+        const index = userTodos.findIndex(t => t.id === id);
+        if (index === -1) return false;
+
+        userTodos.splice(index, 1);
+        return true;
     }
 
     // Todoを編集
     editTodo(id, userId, title, description) {
-        return new Promise((resolve, reject) => {
-            this.db.run(
-                'UPDATE todos SET title = ?, description = ? WHERE id = ? AND user_id = ?',
-                [title, description, id, userId],
-                function(err) {
-                    if (err) reject(err);
-                    else resolve(this.changes > 0);
-                }
-            );
-        });
+        const userTodos = this.todos.get(userId);
+        if (!userTodos) return false;
+
+        const todo = userTodos.find(t => t.id === id);
+        if (!todo) return false;
+
+        todo.title = title;
+        todo.description = description;
+        return true;
     }
 
-    close() {
-        this.db.close();
+    // データをクリア（Bot再起動時）
+    clear() {
+        this.todos.clear();
+        this.nextId = 1;
+    }
+
+    // 統計情報
+    getStats() {
+        let totalTodos = 0;
+        let completedTodos = 0;
+        let totalUsers = 0;
+
+        for (const [userId, userTodos] of this.todos) {
+            totalUsers++;
+            totalTodos += userTodos.length;
+            completedTodos += userTodos.filter(t => t.completed).length;
+        }
+
+        return {
+            totalUsers,
+            totalTodos,
+            completedTodos,
+            pendingTodos: totalTodos - completedTodos
+        };
     }
 }
 
-module.exports = TodoDatabase; 
+module.exports = TodoDatabaseMemory; 
