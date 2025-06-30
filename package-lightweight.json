@@ -1,0 +1,24 @@
+{
+  "name": "discord-todo-bot-lightweight",
+  "version": "1.0.0",
+  "description": "DiscordでGUI上で操作できるTodoListBot（軽量版）",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "deploy": "node deploy-commands.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["discord", "bot", "todo", "gui", "lightweight"],
+  "author": "",
+  "license": "MIT"
+} 
